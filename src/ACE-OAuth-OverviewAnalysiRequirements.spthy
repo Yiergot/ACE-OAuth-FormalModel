@@ -4,13 +4,14 @@ begin
 * Protocol: Ace-Oauth : https://tools.ietf.org/pdf/draft-ietf-ace-oauth-authz-18.pdf
 * Model Author: Luca Arnaboldi 
 *
-* Date : 28th February 2019 
+* Date : 28th December 2019 
 * Last Update: 10th March 2019 
 * status: ongoing - stable 
 *
 *  
 * Readjustable model just insert different components and scenarios to match your profile
-* Agents:
+* 
+*Agents:
 *
 * C: Client
 * AS: Authorization Server
