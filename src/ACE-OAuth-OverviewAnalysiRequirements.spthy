@@ -1,0 +1,308 @@
+theory AceAuthSpec
+begin
+/*
+* Protocol: Ace-Oauth : https://tools.ietf.org/pdf/draft-ietf-ace-oauth-authz-18.pdf
+* Model Author: Luca Arnaboldi 
+*
+* Date : 28th February 2019 
+* Last Update: 10th March 2019 
+* status: ongoing - stable 
+*
+*  
+* Readjustable model just insert different components and scenarios to match your profile
+* Agents:
+*
+* C: Client
+* AS: Authorization Server
+* RS: Resource Server
+* 
+*
+*/
+builtins: asymmetric-encryption,signing,hashing 
+
+
+rule InitialiseC:
+let
+	C_PK = pk(~C_SK)
+in
+[Fr(~C_SK)]
+--[CSetup()]->
+[!CSK($C,~C_SK),
+ !CPK($C,C_PK),
+ Out(C_PK)]
+
+rule InitialisePoPKey:
+let
+	PoP_PK = pk(~PoP_SK)
+in
+[ Fr(~PoP_SK) ]
+--[PoPSetup()]->
+[!PoP_SK($AS,~PoP_SK),
+ !PoP_PK($AS,PoP_PK),
+ Out(PoP_PK)]
+
+rule InitialiseAS:
+let AS_PK = pk(~AS_SK)
+in
+[ Fr(~AS_SK) ]
+--[ASSetup()]->
+[!ASSK($AS,~AS_SK),
+ !ASPK($AS,AS_PK),
+ Out(AS_PK)]
+
+rule Reveal_SecretKeysAS:
+	[!ASSK( $AS, SK_AS )]
+  --[RevealAS($AS)]->
+	[Out(SK_AS)]
+
+rule Reveal_SecretKeysC:
+	[!CSK( $C, SK_C )]
+  --[RevealP($C)]->
+	[Out(SK_C)]
+rule Reveal_SecretKeysPoP:
+	[!PoP_SK( $AS, SK_Pop )]
+  --[RevealPoP($AS)]->
+	[Out(SK_Pop)]
+
+
+// ACE-OAuth Draft 21 Pg 41 - All channels between C - AS and RS to AS must be secure and replay protected
+//Secure Channels + replay resistance for C-AS
+rule ChanOut_Secure_PA:
+        [ Out_SCA($A,$B,x) ]
+      --[ ChanOut_SCA($A,$B,x) ]->
+        [ SecCA($A,$B,x) ]
+rule ChanIn_Secure_PA:
+        [ SecCA($A,$B,x) ]
+      --[ ChanIn_SCA($A,$B,x) ]->
+        [ In_SCA($A,$B,x) ]
+
+//Secure Channels + replay resistance for C-RS (After setup)
+rule ChanOut_Secure_PR:
+        [ Out_SCR($A,$B,x) ]
+      --[ ChanOut_SCR($A,$B,x) ]->
+        [ SecCR($A,$B,x) ]
+rule ChanIn_Secure_PR:
+        [ SecCR($A,$B,x) ]
+      --[ ChanIn_SCR($A,$B,x) ]->
+        [ In_SCR($A,$B,x) ]
+
+
+//secure channels + replay resistance for AS-RS
+rule ChanOut_Secure:
+        [ Out_SRA($A,$B,x) ]
+      --[ ChanOut_SRA($A,$B,x) ]->
+        [ SecSRA($A,$B,x) ]
+rule ChanIn_Secure:
+        [ SecSRA($A,$B,x) ]
+      --[ ChanIn_SRA($A,$B,x) ]->
+        [ In_SRA($A,$B,x) ]
+
+//Equational theory for Eq
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+// Assume that there is a single Proof of Possession key for a token
+restriction single_PoP_Key:
+"All #i #j. PoPSetup(  ) @ i & PoPSetup(  )  @ j ==> #i = #j"
+
+//Ensuring the correct portocol flow
+lemma executable_protocol:
+	exists-trace
+	"
+		Ex  C  AS encReq tokenResp  RS resourceEnc resource
+		#k #l #m #n 
+		#f #q #y #u .  
+		ClientRequest(C,encReq) @ #k & ReceiveClient(AS,encReq)@ #l &
+		ReturnToken(AS,tokenResp) @ #m & HaveToken(C,tokenResp) @ #n &
+		ResourceRequest(C,resourceEnc) @ #f & RSRec(RS,resourceEnc) @ #q  &
+	    RSResourceSend(RS,resource) @ #y & PResourceSend(C,resource) @ #u 
+		"
+// As we are evaluating the effectiveness of the requirements and spec set out we do not model a specific
+// protocol such as DTLS but model it as Secure+replay protected channels variations can be tested here
+rule ClientRecReqSnd:
+let
+	//Encryption and authentication means must be added here if not using S+P channels
+	requestOut =<~scope,~audience,~grant>
+in
+[
+	Fr(~scope),  Fr(~grant), Fr(~audience)
+	//Set up and save it's keys and get the public key from the AS is asymmetric crypto is used
+	,!ASPK($AS,PK_AS),!CSK($C,SK_C),!CPK($C,PK_C) 
+	
+]
+--[
+	ClientRequest($C,requestOut)
+	,Running($C,$AS,<'AS','C',requestOut>)
+]->
+[
+	//save variables
+	St1_C($C,PK_AS,SK_C,PK_C,~scope,~audience,~grant)
+	//Secure replay protected channel
+	,Out_SCA($C,$AS,requestOut)	
+]
+// AS - Token! -> Proxy
+rule ASRecReqSnd:
+let
+	proxyReq = <~scope,~audience,~grant>
+    PoP_Token = <sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>
+
+    //Ass encryption authentication here for variations
+	tokenResponse = <PoP_Token,PoP_SK>	
+in
+[ 
+	In_SCA($C,$AS,proxyReq), 
+	Fr(~token),
+	// Create the proof of possession key setup 
+	//   - Asymmmentric here but can be symmetric
+	!PoP_PK($AS,PoP_PK),!PoP_SK($AS,PoP_SK)
+	//Save my pk/sk key combo
+	,!ASSK($AS,SK_AS), !ASPK($AS,PK_AS)
+	//Get the public key of the proxy and save it
+	,!CPK($C,PK_C)
+]
+--[
+	ReceiveClient($AS,proxyReq)
+	,CreateToken($AS,~token)
+	,Honest($AS),Honest($C)
+	,ReturnToken($AS,~token)
+
+	,SecretR(proxyReq)
+	,CommitRequest($AS,$C,<'AS','C',proxyReq>)
+
+	,RunningToken($AS,$C,<'C','AS',PoP_Token>)
+]->
+[
+	//Save variables
+	St1_AS($AS,~scope,~audience,~grant,PK_C,SK_AS,PK_AS,~token,PoP_Token,PoP_SK,PoP_PK),
+
+	//Send out the response
+	Out_SCA($AS,$C,tokenResponse),
+
+	//As the request is meant to state the RS needed send him the information he needs (this is setup by default in ACE-OAUTH)
+	Out_SRA($AS,$RS,<~token,PoP_PK,PK_AS>)
+]
+
+// At this point we want to ensure that the request is Secret and that we have injective agreement of the
+// request - the exchange between the Client and the AS of the request happened between them and it cannot be replayed 
+lemma secrecy_request:
+  "All x #i. 
+    SecretR(x) @#i ==> 
+    not (Ex #j. K(x)@#j) | 
+    	((Ex B #r. RevealAS(B) @r) | (Ex C #q. RevealP(C)@q) | (Ex D #u. RevealPoP(D)@u) )
+   "
+lemma injectiveagreement_request:
+  "All A B t #i. 
+    CommitRequest(A,B,t) @i
+    ==> (Ex #j. Running(B,A,t) @j 
+        & j < i
+        & not (Ex A2 B2 #i2. CommitRequest(A2,B2,t) @i2
+                           & not (#i2 = #i)))"
+            
+//Here the resource request is sent to RS, on insecure channel
+/* Communication is on insecure channel so the attacker will know:
+	~ PoP_Token - But cannot reuse it as he doesnt have PoP_PK
+	~ what request is being made - but not identity of who requests (handled in token on protocol)
+*/
+rule ProxyRecTokenSnd:
+let 
+	
+	//The PoP_SK is secret and only for the client. 
+	//This allows him to verify communication from RS later when RS gets the content of token
+	tokenAS = <<sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>,PoP_SK>
+
+	//Interpret variables to quicken analysis
+	PoP_Token = <sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>
+
+	//Request plus token insecurely sent
+	requestResource = <~requestedResource,PoP_Token>
+in
+[ 
+	In_SCA($AS,$C,tokenAS) 
+	,St1_C($C,PK_AS,SK_C,PK_C,~scope,~audience,~grant)
+	,
+	//Random resource request
+	Fr(~requestedResource)
+]
+--[
+	//Check token is legitimated that the singature matches the sender (AS)
+    Eq(verify(sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>,PK_AS),true)
+
+	,Honest($C),Honest($AS)
+	,CommitToken($C,$AS,<'C','AS',PoP_Token>)
+	,SecretT(PoP_Token)
+	
+	,HaveToken($C,~token)
+	,Honest($AS),Honest($C),
+	ResourceRequest($C,requestResource)
+
+	]->
+	[
+		St3_P($C,PK_AS,SK_C,PK_C,~scope,~audience,~grant,~token,PoP_PK,PoP_SK,~requestedResource)
+		,Out(requestResource)
+	]
+
+//The token cannot be used by an attacker due to signature check, so we only need to ensure agreement
+lemma injectiveagreement_token:  
+  "All A B t #i. 
+    CommitToken(A,B,t) @i
+    ==> (Ex #j. RunningToken(B,A,t) @j 
+        & j < i
+        & not (Ex A2 B2 #i2. CommitToken(A2,B2,t) @i2
+                           & not (#i2 = #i)))
+    	//If using Crypto as testing a specific setup, can check that there are no key reveals
+    	 //| (Ex C #r. RevealAS(C) @ r & Honest(C) @ i)
+//         | (Ex D #r. RevealP(D)@r & Honest(D) @i)" 
+   "
+
+
+	rule RSReq:
+	let
+
+		// Request for resource, need PK of AS to very the token and implement means to authenticate
+		// Either by token introspection or by some means of signing as in case study
+		reqRes = <~requestedResource,PoP_Token>
+	in
+	[
+		In(reqRes)
+		,In_SRA($AS,$RS,<~token,PoP_PK,PK_AS>)
+		,Fr(~requested)
+	]
+	--[
+		RSRec($RS,reqRes)
+		,RSResourceSend($RS,~requested)
+		,RunningResponse($RS,$C,<'C','RS',~requested>)
+	]->
+	[
+
+		Out_SCR($RS,$C,~requested)
+	]
+
+rule ClientReceive:
+	[
+		In_SCR($RS,$C,~requested)
+	]
+	--[
+		PResourceSend($C,~requested)
+		,SecretResource(~requested)
+		,CommitResponse($C,$RS,<'C','RS',~requested>)
+		,Honest($C),Honest($RS)
+	]->
+	[
+	]
+//At this point the response must be secret as it might be confidential
+	lemma secrecy_response:
+	  "All x #i. 
+	    SecretResource(x) @#i ==> 
+	    not (Ex #j. K(x)@#j) | 
+	    	( Ex D #u. RevealPoP(D)@u & Honest(D) @i )  "
+
+//it must also be insured that the resource comes from the RS and that it cannot be replayed
+	lemma injectiveagreement_response:
+  "All A B t #i. 
+    CommitResponse(A,B,t) @i
+    ==> (Ex #j. RunningResponse(B,A,t) @j 
+        & j < i
+        & not (Ex A2 B2 #i2. CommitResponse(A2,B2,t) @i2
+                           & not (#i2 = #i)))
+              | (Ex D #r. RevealPoP(D)@r & Honest(D) @i)"
+end

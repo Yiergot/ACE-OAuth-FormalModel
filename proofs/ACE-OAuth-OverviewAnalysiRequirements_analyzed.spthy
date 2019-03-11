@@ -1,0 +1,832 @@
+theory AceAuthSpec begin
+
+// Function signature and definition of the equational theory E
+
+functions: adec/2, aenc/2, fst/1, h/1, pair/2, pk/1, sign/2, snd/1,
+           true/0, verify/3
+equations:
+    adec(aenc(x.1, pk(x.2)), x.2) = x.1,
+    fst(<x.1, x.2>) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+
+
+rule (modulo E) InitialiseC:
+   [ Fr( ~C_SK ) ]
+  --[ CSetup( ) ]->
+   [ !CSK( $C, ~C_SK ), !CPK( $C, pk(~C_SK) ), Out( pk(~C_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitialisePoPKey:
+   [ Fr( ~PoP_SK ) ]
+  --[ PoPSetup( ) ]->
+   [
+   !PoP_SK( $AS, ~PoP_SK ), !PoP_PK( $AS, pk(~PoP_SK) ), Out( pk(~PoP_SK) )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitialiseAS:
+   [ Fr( ~AS_SK ) ]
+  --[ ASSetup( ) ]->
+   [ !ASSK( $AS, ~AS_SK ), !ASPK( $AS, pk(~AS_SK) ), Out( pk(~AS_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysAS:
+   [ !ASSK( $AS, SK_AS ) ] --[ RevealAS( $AS ) ]-> [ Out( SK_AS ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysC:
+   [ !CSK( $C, SK_C ) ] --[ RevealP( $C ) ]-> [ Out( SK_C ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysPoP:
+   [ !PoP_SK( $AS, SK_Pop ) ] --[ RevealPoP( $AS ) ]-> [ Out( SK_Pop ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure_PA:
+   [ Out_SCA( $A, $B, x ) ]
+  --[ ChanOut_SCA( $A, $B, x ) ]->
+   [ SecCA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure_PA:
+   [ SecCA( $A, $B, x ) ]
+  --[ ChanIn_SCA( $A, $B, x ) ]->
+   [ In_SCA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure_PR:
+   [ Out_SCR( $A, $B, x ) ]
+  --[ ChanOut_SCR( $A, $B, x ) ]->
+   [ SecCR( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure_PR:
+   [ SecCR( $A, $B, x ) ]
+  --[ ChanIn_SCR( $A, $B, x ) ]->
+   [ In_SCR( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure:
+   [ Out_SRA( $A, $B, x ) ]
+  --[ ChanOut_SRA( $A, $B, x ) ]->
+   [ SecSRA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure:
+   [ SecSRA( $A, $B, x ) ]
+  --[ ChanIn_SRA( $A, $B, x ) ]->
+   [ In_SRA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+restriction single_PoP_Key:
+  "∀ #i #j. ((PoPSetup( ) @ #i) ∧ (PoPSetup( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+lemma executable_protocol:
+  exists-trace
+  "∃ C AS encReq tokenResp RS resourceEnc resource #k #l #m #n #f #q #y #u.
+    (((((((ClientRequest( C, encReq ) @ #k) ∧
+          (ReceiveClient( AS, encReq ) @ #l)) ∧
+         (ReturnToken( AS, tokenResp ) @ #m)) ∧
+        (HaveToken( C, tokenResp ) @ #n)) ∧
+       (ResourceRequest( C, resourceEnc ) @ #f)) ∧
+      (RSRec( RS, resourceEnc ) @ #q)) ∧
+     (RSResourceSend( RS, resource ) @ #y)) ∧
+    (PResourceSend( C, resource ) @ #u)"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ C AS encReq tokenResp RS resourceEnc resource #k #l #m #n #f #q #y #u.
+  (ClientRequest( C, encReq ) @ #k) ∧
+  (ReceiveClient( AS, encReq ) @ #l) ∧
+  (ReturnToken( AS, tokenResp ) @ #m) ∧
+  (HaveToken( C, tokenResp ) @ #n) ∧
+  (ResourceRequest( C, resourceEnc ) @ #f) ∧
+  (RSRec( RS, resourceEnc ) @ #q) ∧
+  (RSResourceSend( RS, resource ) @ #y) ∧
+  (PResourceSend( C, resource ) @ #u)"
+*/
+simplify
+solve( !ASPK( $AS, PK_AS ) ▶₃ #k )
+  case InitialiseAS
+  solve( !CSK( $C, SK_C.1 ) ▶₄ #k )
+    case InitialiseC
+    solve( !CPK( $C, PK_C.1 ) ▶₅ #k )
+      case InitialiseC
+      solve( !PoP_PK( $AS.2, PoP_PK.1 ) ▶₂ #l )
+        case InitialisePoPKey
+        solve( !PoP_SK( $AS.2, PoP_SK.2 ) ▶₃ #l )
+          case InitialisePoPKey
+          solve( !ASSK( $AS.2, SK_AS.1 ) ▶₄ #l )
+            case InitialiseAS
+            solve( !ASPK( $AS.2, PK_AS ) ▶₅ #l )
+              case InitialiseAS
+              solve( !CPK( $C.1, PK_C.1 ) ▶₆ #l )
+                case InitialiseC
+                solve( !PoP_PK( $AS.2, PoP_PK.1 ) ▶₂ #m )
+                  case InitialisePoPKey
+                  solve( !PoP_SK( $AS.2, PoP_SK.2 ) ▶₃ #m )
+                    case InitialisePoPKey
+                    solve( !ASSK( $AS.2, SK_AS.1 ) ▶₄ #m )
+                      case InitialiseAS
+                      solve( !ASPK( $AS.2, PK_AS ) ▶₅ #m )
+                        case InitialiseAS
+                        solve( !CPK( $C.2, PK_C.1 ) ▶₆ #m )
+                          case InitialiseC
+                          solve( In_SCA( $AS.3, $C,
+                                         <<sign(<~token.2, PoP_PK.1>, SK_AS.1), ~token.2, PoP_PK.1>, PoP_SK.2>
+                                 ) ▶₀ #n )
+                            case ChanIn_Secure_PA
+                            solve( St1_C( $C, pk(~AS_SK.3), SK_C.1, PK_C.1, ~scope.3, ~audience.3,
+                                          ~grant.3
+                                   ) ▶₁ #n )
+                              case ClientRecReqSnd
+                              solve( In_SCA( $AS, $C,
+                                             <<sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK>
+                                     ) ▶₀ #f )
+                                case ChanIn_Secure_PA
+                                solve( St1_C( $C, pk(~AS_SK), SK_C, PK_C, ~scope, ~audience, ~grant
+                                       ) ▶₁ #f )
+                                  case ClientRecReqSnd
+                                  solve( In_SRA( $AS.2, $RS.2, <~token.3, PoP_PK, PK_AS> ) ▶₁ #q )
+                                    case ChanIn_Secure
+                                    solve( In_SRA( $AS.2, $RS.2, <~token.4, PoP_PK, PK_AS> ) ▶₁ #y )
+                                      case ChanIn_Secure
+                                      solve( In_SCR( $RS.3, $C, ~requested.1 ) ▶₀ #u )
+                                        case ChanIn_Secure_PR
+                                        solve( !KU( ~requestedResource.2 ) @ #vk.4 )
+                                          case Reveal_SecretKeysAS
+                                          solve( In_SCA( $C.1, $AS, <~scope.1, ~audience.1, ~grant.1>
+                                                 ) ▶₀ #l )
+                                            case ChanIn_Secure_PA
+                                            solve( In_SCA( $C, $AS, <~scope.2, ~audience.2, ~grant.2>
+                                                   ) ▶₀ #m )
+                                              case ChanIn_Secure_PA
+                                              solve( In_SCA( $C, $AS, <~scope.4, ~audience.4, ~grant.4>
+                                                     ) ▶₀ #vr.17 )
+                                                case ChanIn_Secure_PA
+                                                solve( In_SCA( $C.2, $AS, <~scope.5, ~audience.5, ~grant.5>
+                                                       ) ▶₀ #vr.26 )
+                                                  case ChanIn_Secure_PA
+                                                  solve( In_SCA( $C.3, $AS, <~scope.6, ~audience.6, ~grant.6>
+                                                         ) ▶₀ #vr.32 )
+                                                    case ChanIn_Secure_PA
+                                                    solve( !KU( ~requestedResource ) @ #vk.3 )
+                                                      case ProxyRecTokenSnd
+                                                      solve( !KU( ~token ) @ #vk.8 )
+                                                        case ProxyRecTokenSnd
+                                                        solve( !KU( sign(<~token, pk(~PoP_SK)>, ~AS_SK)
+                                                               ) @ #vk.7 )
+                                                          case ProxyRecTokenSnd
+                                                          solve( !KU( pk(~PoP_SK) ) @ #vk.9 )
+                                                            case InitialisePoPKey
+                                                            SOLVED // trace found
+                                                          qed
+                                                        qed
+                                                      qed
+                                                    qed
+                                                  qed
+                                                qed
+                                              qed
+                                            qed
+                                          qed
+                                        qed
+                                      qed
+                                    qed
+                                  qed
+                                qed
+                              qed
+                            qed
+                          qed
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+rule (modulo E) ClientRecReqSnd:
+   [
+   Fr( ~scope ), Fr( ~grant ), Fr( ~audience ), !ASPK( $AS, PK_AS ),
+   !CSK( $C, SK_C ), !CPK( $C, PK_C )
+   ]
+  --[
+  ClientRequest( $C, <~scope, ~audience, ~grant> ),
+  Running( $C, $AS, <'AS', 'C', ~scope, ~audience, ~grant> )
+  ]->
+   [
+   St1_C( $C, PK_AS, SK_C, PK_C, ~scope, ~audience, ~grant ),
+   Out_SCA( $C, $AS, <~scope, ~audience, ~grant> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ASRecReqSnd:
+   [
+   In_SCA( $C, $AS, <~scope, ~audience, ~grant> ), Fr( ~token ),
+   !PoP_PK( $AS, PoP_PK ), !PoP_SK( $AS, PoP_SK ), !ASSK( $AS, SK_AS ),
+   !ASPK( $AS, PK_AS ), !CPK( $C, PK_C )
+   ]
+  --[
+  ReceiveClient( $AS, <~scope, ~audience, ~grant> ),
+  CreateToken( $AS, ~token ), Honest( $AS ), Honest( $C ),
+  ReturnToken( $AS, ~token ), SecretR( <~scope, ~audience, ~grant> ),
+  CommitRequest( $AS, $C, <'AS', 'C', ~scope, ~audience, ~grant> ),
+  RunningToken( $AS, $C,
+                <'C', 'AS', sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+  )
+  ]->
+   [
+   St1_AS( $AS, ~scope, ~audience, ~grant, PK_C, SK_AS, PK_AS, ~token,
+           <sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK, PoP_PK
+   ),
+   Out_SCA( $AS, $C,
+            <<sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK>
+   ),
+   Out_SRA( $AS, $RS, <~token, PoP_PK, PK_AS> )
+   ]
+
+  // loop breaker: [0]
+  /* has exactly the trivial AC variant */
+
+lemma secrecy_request:
+  all-traces
+  "∀ x #i.
+    (SecretR( x ) @ #i) ⇒
+    ((¬(∃ #j. K( x ) @ #j)) ∨
+     (((∃ B #r. RevealAS( B ) @ #r) ∨ (∃ C #q. RevealP( C ) @ #q)) ∨
+      (∃ D #u. RevealPoP( D ) @ #u)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ x #i.
+  (SecretR( x ) @ #i)
+ ∧
+  (∃ #j. (K( x ) @ #j)) ∧
+  (∀ B #r. (RevealAS( B ) @ #r) ⇒ ⊥) ∧
+  (∀ C #q. (RevealP( C ) @ #q) ⇒ ⊥) ∧
+  (∀ D #u. (RevealPoP( D ) @ #u) ⇒ ⊥)"
+*/
+simplify
+solve( !PoP_PK( $AS, PoP_PK ) ▶₂ #i )
+  case InitialisePoPKey
+  solve( !PoP_SK( $AS, PoP_SK.1 ) ▶₃ #i )
+    case InitialisePoPKey
+    solve( !ASSK( $AS, SK_AS ) ▶₄ #i )
+      case InitialiseAS
+      solve( !ASPK( $AS, PK_AS ) ▶₅ #i )
+        case InitialiseAS
+        solve( !CPK( $C, PK_C ) ▶₆ #i )
+          case InitialiseC
+          solve( !KU( ~scope ) @ #vk.1 )
+            case ProxyRecTokenSnd_case_1
+            solve( !KU( ~audience ) @ #vk.3 )
+              case ProxyRecTokenSnd_case_1
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case ProxyRecTokenSnd_case_2
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case Reveal_SecretKeysAS
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysC
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysPoP
+              by contradiction /* from formulas */
+            next
+              case fresh
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            qed
+          next
+            case ProxyRecTokenSnd_case_2
+            solve( !KU( ~audience ) @ #vk.3 )
+              case ProxyRecTokenSnd_case_1
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case ProxyRecTokenSnd_case_2
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case Reveal_SecretKeysAS
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysC
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysPoP
+              by contradiction /* from formulas */
+            next
+              case fresh
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            qed
+          next
+            case Reveal_SecretKeysAS
+            by contradiction /* from formulas */
+          next
+            case Reveal_SecretKeysC
+            by contradiction /* from formulas */
+          next
+            case Reveal_SecretKeysPoP
+            by contradiction /* from formulas */
+          next
+            case fresh
+            solve( !KU( ~audience ) @ #vk.3 )
+              case ProxyRecTokenSnd_case_1
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case ProxyRecTokenSnd_case_2
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            next
+              case Reveal_SecretKeysAS
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysC
+              by contradiction /* from formulas */
+            next
+              case Reveal_SecretKeysPoP
+              by contradiction /* from formulas */
+            next
+              case fresh
+              solve( !KU( ~grant ) @ #vk.4 )
+                case ProxyRecTokenSnd_case_1
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case ProxyRecTokenSnd_case_2
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              next
+                case Reveal_SecretKeysAS
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysC
+                by contradiction /* from formulas */
+              next
+                case Reveal_SecretKeysPoP
+                by contradiction /* from formulas */
+              next
+                case fresh
+                by solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma injectiveagreement_request:
+  all-traces
+  "∀ A B t #i.
+    (CommitRequest( A, B, t ) @ #i) ⇒
+    (∃ #j.
+      ((Running( B, A, t ) @ #j) ∧ (#j < #i)) ∧
+      (¬(∃ A2 B2 #i2. (CommitRequest( A2, B2, t ) @ #i2) ∧ (¬(#i2 = #i)))))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i.
+  (CommitRequest( A, B, t ) @ #i)
+ ∧
+  ∀ #j.
+   (Running( B, A, t ) @ #j)
+  ⇒
+   ((¬(#j < #i)) ∨
+    (∃ A2 B2 #i2. (CommitRequest( A2, B2, t ) @ #i2) ∧ ¬(#i2 = #i)))"
+*/
+simplify
+solve( !PoP_PK( $AS, PoP_PK ) ▶₂ #i )
+  case InitialisePoPKey
+  solve( !PoP_SK( $AS, PoP_SK.1 ) ▶₃ #i )
+    case InitialisePoPKey
+    solve( !ASSK( $AS, SK_AS ) ▶₄ #i )
+      case InitialiseAS
+      solve( !ASPK( $AS, PK_AS ) ▶₅ #i )
+        case InitialiseAS
+        solve( !CPK( $C, PK_C ) ▶₆ #i )
+          case InitialiseC
+          solve( In_SCA( $C, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i )
+            case ChanIn_Secure_PA
+            solve( (#i2 < #i)  ∥ (#i < #i2) )
+              case case_1
+              solve( !PoP_PK( $AS.1, PoP_PK ) ▶₂ #i2 )
+                case InitialisePoPKey
+                solve( !PoP_SK( $AS, PoP_SK.1 ) ▶₃ #i2 )
+                  case InitialisePoPKey
+                  solve( !ASSK( $AS, SK_AS ) ▶₄ #i2 )
+                    case InitialiseAS
+                    solve( !ASPK( $AS, PK_AS ) ▶₅ #i2 )
+                      case InitialiseAS
+                      solve( !CPK( $C.1, PK_C ) ▶₆ #i2 )
+                        case InitialiseC
+                        solve( In_SCA( $C.1, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i2 )
+                          case ChanIn_Secure_PA
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            next
+              case case_2
+              solve( !PoP_PK( $AS.1, PoP_PK ) ▶₂ #i2 )
+                case InitialisePoPKey
+                solve( !PoP_SK( $AS, PoP_SK.1 ) ▶₃ #i2 )
+                  case InitialisePoPKey
+                  solve( !ASSK( $AS, SK_AS ) ▶₄ #i2 )
+                    case InitialiseAS
+                    solve( !ASPK( $AS, PK_AS ) ▶₅ #i2 )
+                      case InitialiseAS
+                      solve( !CPK( $C.1, PK_C ) ▶₆ #i2 )
+                        case InitialiseC
+                        solve( In_SCA( $C.1, $AS, <~scope, ~audience, ~grant> ) ▶₀ #i2 )
+                          case ChanIn_Secure_PA
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+rule (modulo E) ProxyRecTokenSnd:
+   [
+   In_SCA( $AS, $C,
+           <<sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK>
+   ),
+   St1_C( $C, PK_AS, SK_C, PK_C, ~scope, ~audience, ~grant ),
+   Fr( ~requestedResource )
+   ]
+  --[
+  Eq( verify(sign(<~token, PoP_PK>, SK_AS), <~token, PoP_PK>, PK_AS), true
+  ),
+  Honest( $C ), Honest( $AS ),
+  CommitToken( $C, $AS,
+               <'C', 'AS', sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+  ),
+  SecretT( <sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK> ),
+  HaveToken( $C, ~token ), Honest( $AS ), Honest( $C ),
+  ResourceRequest( $C,
+                   <~requestedResource, sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+  )
+  ]->
+   [
+   St3_P( $C, PK_AS, SK_C, PK_C, ~scope, ~audience, ~grant, ~token, PoP_PK,
+          PoP_SK, ~requestedResource
+   ),
+   Out( <~requestedResource, sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+   )
+   ]
+
+  /*
+  rule (modulo AC) ProxyRecTokenSnd:
+     [
+     In_SCA( $AS, $C,
+             <<sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK>
+     ),
+     St1_C( $C, PK_AS, SK_C, PK_C, ~scope, ~audience, ~grant ),
+     Fr( ~requestedResource )
+     ]
+    --[
+    Eq( z, true ), Honest( $C ), Honest( $AS ),
+    CommitToken( $C, $AS,
+                 <'C', 'AS', sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+    ),
+    SecretT( <sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK> ),
+    HaveToken( $C, ~token ), Honest( $AS ), Honest( $C ),
+    ResourceRequest( $C,
+                     <~requestedResource, sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+    )
+    ]->
+     [
+     St3_P( $C, PK_AS, SK_C, PK_C, ~scope, ~audience, ~grant, ~token, PoP_PK,
+            PoP_SK, ~requestedResource
+     ),
+     Out( <~requestedResource, sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>
+     )
+     ]
+    variants (modulo AC)
+    1. ~token
+             = ~token.21
+       PK_AS = PK_AS.22
+       PoP_PK
+             = PoP_PK.24
+       SK_AS = SK_AS.26
+       z     = verify(sign(<~token.21, PoP_PK.24>, SK_AS.26),
+                      <~token.21, PoP_PK.24>, PK_AS.22)
+    
+    2. PK_AS = pk(SK_AS.16)
+       SK_AS = SK_AS.16
+       z     = true
+  */
+
+lemma injectiveagreement_token:
+  all-traces
+  "∀ A B t #i.
+    (CommitToken( A, B, t ) @ #i) ⇒
+    (∃ #j.
+      ((RunningToken( B, A, t ) @ #j) ∧ (#j < #i)) ∧
+      (¬(∃ A2 B2 #i2. (CommitToken( A2, B2, t ) @ #i2) ∧ (¬(#i2 = #i)))))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i.
+  (CommitToken( A, B, t ) @ #i)
+ ∧
+  ∀ #j.
+   (RunningToken( B, A, t ) @ #j)
+  ⇒
+   ((¬(#j < #i)) ∨
+    (∃ A2 B2 #i2. (CommitToken( A2, B2, t ) @ #i2) ∧ ¬(#i2 = #i)))"
+*/
+simplify
+solve( In_SCA( $AS, $C,
+               <<sign(<~token, PoP_PK>, SK_AS), ~token, PoP_PK>, PoP_SK>
+       ) ▶₀ #i )
+  case ChanIn_Secure_PA
+  solve( (#i2 < #i)  ∥ (#i < #i2) )
+    case case_1
+    solve( St1_C( $C, pk(~AS_SK), SK_C, PK_C, ~scope, ~audience, ~grant
+           ) ▶₁ #i )
+      case ClientRecReqSnd
+      solve( In_SCA( $AS.1, $C.1,
+                     <<sign(<~token, pk(~PoP_SK)>, ~AS_SK), ~token, pk(~PoP_SK)>, PoP_SK.1>
+             ) ▶₀ #i2 )
+        case ChanIn_Secure_PA
+        by contradiction /* cyclic */
+      qed
+    qed
+  next
+    case case_2
+    solve( St1_C( $C, pk(~AS_SK), SK_C, PK_C, ~scope, ~audience, ~grant
+           ) ▶₁ #i )
+      case ClientRecReqSnd
+      solve( In_SCA( $AS.1, $C.1,
+                     <<sign(<~token, pk(~PoP_SK)>, ~AS_SK), ~token, pk(~PoP_SK)>, PoP_SK.1>
+             ) ▶₀ #i2 )
+        case ChanIn_Secure_PA
+        by contradiction /* cyclic */
+      qed
+    qed
+  qed
+qed
+
+rule (modulo E) RSReq:
+   [
+   In( <~requestedResource, PoP_Token> ),
+   In_SRA( $AS, $RS, <~token, PoP_PK, PK_AS> ), Fr( ~requested )
+   ]
+  --[
+  RSRec( $RS, <~requestedResource, PoP_Token> ),
+  RSResourceSend( $RS, ~requested ),
+  RunningResponse( $RS, $C, <'C', 'RS', ~requested> )
+  ]->
+   [ Out_SCR( $RS, $C, ~requested ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ClientReceive:
+   [ In_SCR( $RS, $C, ~requested ) ]
+  --[
+  PResourceSend( $C, ~requested ), SecretResource( ~requested ),
+  CommitResponse( $C, $RS, <'C', 'RS', ~requested> ), Honest( $C ),
+  Honest( $RS )
+  ]->
+   [ ]
+
+  /* has exactly the trivial AC variant */
+
+lemma secrecy_response:
+  all-traces
+  "∀ x #i.
+    (SecretResource( x ) @ #i) ⇒
+    ((¬(∃ #j. K( x ) @ #j)) ∨
+     (∃ D #u. (RevealPoP( D ) @ #u) ∧ (Honest( D ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ x #i.
+  (SecretResource( x ) @ #i)
+ ∧
+  (∃ #j. (K( x ) @ #j)) ∧
+  (∀ D #u. (RevealPoP( D ) @ #u) ∧ (Honest( D ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( In_SCR( $RS, $C, ~requested ) ▶₀ #i )
+  case ChanIn_Secure_PR
+  by solve( !KU( ~requested ) @ #vk )
+qed
+
+lemma injectiveagreement_response:
+  all-traces
+  "∀ A B t #i.
+    (CommitResponse( A, B, t ) @ #i) ⇒
+    ((∃ #j.
+       ((RunningResponse( B, A, t ) @ #j) ∧ (#j < #i)) ∧
+       (¬(∃ A2 B2 #i2. (CommitResponse( A2, B2, t ) @ #i2) ∧ (¬(#i2 = #i))))) ∨
+     (∃ D #r. (RevealPoP( D ) @ #r) ∧ (Honest( D ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i.
+  (CommitResponse( A, B, t ) @ #i)
+ ∧
+  (∀ #j.
+    (RunningResponse( B, A, t ) @ #j)
+   ⇒
+    ((¬(#j < #i)) ∨
+     (∃ A2 B2 #i2. (CommitResponse( A2, B2, t ) @ #i2) ∧ ¬(#i2 = #i)))) ∧
+  (∀ D #r. (RevealPoP( D ) @ #r) ∧ (Honest( D ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( In_SCR( $RS, $C, ~requested ) ▶₀ #i )
+  case ChanIn_Secure_PR
+  solve( (#i2 < #i)  ∥ (#i < #i2) )
+    case case_1
+    solve( In_SCR( $RS.1, $C.1, ~requested ) ▶₀ #i2 )
+      case ChanIn_Secure_PR
+      by contradiction /* cyclic */
+    qed
+  next
+    case case_2
+    solve( In_SCR( $RS.1, $C.1, ~requested ) ▶₀ #i2 )
+      case ChanIn_Secure_PR
+      by contradiction /* cyclic */
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end
