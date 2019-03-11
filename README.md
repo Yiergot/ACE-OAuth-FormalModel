@@ -1,5 +1,5 @@
 # ACE-OAuth-FormalModel
-A repository to host our generalised formal specification of OAuth and corresponding profiles.
+A repository to host our generalised formal specification of ACE-OAuth and corresponding profiles.
 For information on ACE-OAuth see: https://tools.ietf.org/pdf/draft-ietf-ace-oauth-authz-22.pdf
 
 The generalised model is intended to be used as a skeleton to build profiles ontop of.
