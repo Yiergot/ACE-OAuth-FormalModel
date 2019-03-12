@@ -141,34 +141,34 @@ in
 	//Secure replay protected channel
 	,Out_SCA($C,$AS,requestOut)	
 ]
-// AS - Token! -> Proxy
+
 rule ASRecReqSnd:
 let
-	proxyReq = <~scope,~audience,~grant>
+	CReq = <~scope,~audience,~grant>
     PoP_Token = <sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>
 
     //Ass encryption authentication here for variations
 	tokenResponse = <PoP_Token,PoP_SK>	
 in
 [ 
-	In_SCA($C,$AS,proxyReq), 
+	In_SCA($C,$AS,CReq), 
 	Fr(~token),
 	// Create the proof of possession key setup 
 	//   - Asymmmentric here but can be symmetric
 	!PoP_PK($AS,PoP_PK),!PoP_SK($AS,PoP_SK)
 	//Save my pk/sk key combo
 	,!ASSK($AS,SK_AS), !ASPK($AS,PK_AS)
-	//Get the public key of the proxy and save it
+	//Get the public key of the client and save it
 	,!CPK($C,PK_C)
 ]
 --[
-	ReceiveClient($AS,proxyReq)
+	ReceiveClient($AS,CReq)
 	,CreateToken($AS,~token)
 	,Honest($AS),Honest($C)
 	,ReturnToken($AS,~token)
 
-	,SecretR(proxyReq)
-	,CommitRequest($AS,$C,<'AS','C',proxyReq>)
+	,SecretR(CReq)
+	,CommitRequest($AS,$C,<'AS','C',CReq>)
 
 	,RunningToken($AS,$C,<'C','AS',PoP_Token>)
 ]->
@@ -204,7 +204,7 @@ lemma injectiveagreement_request:
 	~ PoP_Token - But cannot reuse it as he doesnt have PoP_PK
 	~ what request is being made - but not identity of who requests (handled in token on protocol)
 */
-rule ProxyRecTokenSnd:
+rule RecTokenSnd:
 let 
 	
 	//The PoP_SK is secret and only for the client. 
