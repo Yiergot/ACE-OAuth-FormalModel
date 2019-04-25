@@ -1,0 +1,427 @@
+theory AceAuthSpec_Profile begin
+
+// Function signature and definition of the equational theory E
+
+functions: adec/2, aenc/2, fst/1, h/1, pair/2, pk/1, sign/2, snd/1,
+           true/0, verify/3
+equations:
+    adec(aenc(x.1, pk(x.2)), x.2) = x.1,
+    fst(<x.1, x.2>) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+
+
+rule (modulo E) InitialiseC:
+   [ Fr( ~C_SK ) ]
+  --[ CSetup( ) ]->
+   [ !CSK( $C, ~C_SK ), !CPK( $C, pk(~C_SK) ), Out( pk(~C_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitialisePoPKey:
+   [ Fr( ~PoP_SK ) ]
+  --[ PoPSetup( ) ]->
+   [ !PoP_SK( $AS, ~PoP_SK ), !PoP_PK( $AS, pk(~PoP_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitialiseAS:
+   [ Fr( ~AS_SK ) ]
+  --[ ASSetup( ) ]->
+   [ !ASSK( $AS, ~AS_SK ), !ASPK( $AS, pk(~AS_SK) ), Out( pk(~AS_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitialiseRS:
+   [ Fr( ~RS_SK ) ]
+  --[ RSSetup( ) ]->
+   [ !RSSK( $RS, ~RS_SK ), !RSPK( $RS, pk(~RS_SK) ), Out( pk(~RS_SK) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysAS:
+   [ !ASSK( $AS, SK_AS ) ] --[ RevealAS( $AS ) ]-> [ Out( SK_AS ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysC:
+   [ !CSK( $C, SK_C ) ] --[ RevealC( $C ) ]-> [ Out( SK_C ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysPoP:
+   [ !PoP_SK( $AS, SK_Pop ) ] --[ RevealPoP( $AS ) ]-> [ Out( SK_Pop ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SecretKeysRS:
+   [ !RSSK( $RS, SK_RS ) ] --[ RevealRS( $RS ) ]-> [ Out( SK_RS ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure_PA:
+   [ Out_SCA( $A, $B, x ) ]
+  --[ ChanOut_SCA( $A, $B, x ) ]->
+   [ SecCA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure_PA:
+   [ SecCA( $A, $B, x ) ]
+  --[ ChanIn_SCA( $A, $B, x ) ]->
+   [ In_SCA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure_PR:
+   [ Out_SCR( $A, $B, x ) ]
+  --[ ChanOut_SCR( $A, $B, x ) ]->
+   [ SecCR( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure_PR:
+   [ SecCR( $A, $B, x ) ]
+  --[ ChanIn_SCR( $A, $B, x ) ]->
+   [ In_SCR( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Secure:
+   [ Out_SRA( $A, $B, x ) ]
+  --[ ChanOut_SRA( $A, $B, x ) ]->
+   [ SecSRA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Secure:
+   [ SecSRA( $A, $B, x ) ]
+  --[ ChanIn_SRA( $A, $B, x ) ]->
+   [ In_SRA( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Authenticated:
+   [ Out_A( $A, $B, x ) ]
+  --[ ChanOut_A( $A, $B, x ) ]->
+   [ !Auth( $A, x ), Out( <$A, $B, x> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Authenticated:
+   [ !Auth( $A, x ), In( $B ) ]
+  --[ ChanIn_A( $A, $B, x ) ]->
+   [ In_A( $A, $B, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ClientRecReqSnd:
+   [ Fr( ~scope ), Fr( ~grant ), Fr( ~audience ), !CPK( $C, C_PK ) ]
+  --[
+  ClientRequest( $C, <~scope, ~audience, ~grant, C_PK> ),
+  Running( $C, $AS, <'AS', 'C', ~scope, ~audience, ~grant, C_PK> )
+  ]->
+   [
+   St1_C( $C, C_PK, ~scope, ~audience, ~grant ),
+   Out_SCA( $C, $AS, <~scope, ~audience, ~grant, C_PK> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ASRecReqSnd:
+   [
+   In_SCA( $C, $AS, <scope, audience, grant, C_PK> ), Fr( ~token ),
+   !ASSK( $AS, SK_AS ), !ASPK( $AS, PK_AS )
+   ]
+  --[
+  ReceiveClient( $AS, <scope, audience, grant, C_PK> ),
+  CreateToken( $AS, ~token ), Honest( $AS ), Honest( $C ),
+  ReturnToken( $AS, <sign(<~token, C_PK>, SK_AS), ~token, C_PK> ),
+  SecretR( <scope, audience, grant, C_PK> ),
+  CommitRequest( $AS, $C, <'AS', 'C', scope, audience, grant, C_PK> ),
+  RunningToken( $AS, $C, <'C', 'AS', ~token> )
+  ]->
+   [
+   Out_SCA( $AS, $C,
+            <<sign(<~token, C_PK>, SK_AS), ~token, C_PK>, PK_AS, $RS>
+   ),
+   Out_SRA( $AS, $RS, <~token, C_PK, PK_AS, $C> )
+   ]
+
+  // loop breaker: [0]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) RecTokenSnd:
+   [
+   In_SCA( $AS, $C, <<sign(<~token, C_PK>, SK_AS), ~token, C_PK>, RS> ),
+   Fr( ~requestedResource ), !CSK( $C, SK_C )
+   ]
+  --[
+  Honest( $C ), Honest( $AS ), CommitToken( $C, $AS, <'C', 'AS', ~token> ),
+  SecretT( <sign(<~token, C_PK>, SK_AS), ~token, C_PK> ),
+  HasSecret( $C, SK_C ),
+  HaveToken( $C, <sign(<~token, C_PK>, SK_AS), ~token, C_PK> ),
+  Honest( $AS ), Honest( $C ), ResourceRequest( $C, ~requestedResource )
+  ]->
+   [ Out( <aenc(~requestedResource, SK_C), sign(<~token, C_PK>, SK_AS)> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) RSReq:
+   [
+   In( <aenc(~requestedResource, SK_C), VerificationRS> ),
+   In_SRA( $AS, $RS, <~token, C_PK, PK_AS, $C> ), Fr( ~requested ),
+   !RSSK( $RS, SK_RS )
+   ]
+  --[
+  Eq( verify(VerificationRS, <~token, C_PK>, PK_AS), true ),
+  RSRec( $RS, ~requestedResource ), RSResourceSend( $RS, ~requested ),
+  SendRes( ~requested ),
+  RunningResponse( $RS, $C, <'C', 'RS', ~requested> )
+  ]->
+   [
+   Out_A( $RS, $C,
+          aenc(<$RS, $C, aenc(~requested, C_PK), 
+                sign(aenc(~requested, C_PK), SK_RS)>,
+               C_PK)
+   )
+   ]
+
+  /*
+  rule (modulo AC) RSReq:
+     [
+     In( <aenc(~requestedResource, SK_C), VerificationRS> ),
+     In_SRA( $AS, $RS, <~token, C_PK, PK_AS, $C> ), Fr( ~requested ),
+     !RSSK( $RS, SK_RS )
+     ]
+    --[
+    Eq( z, true ), RSRec( $RS, ~requestedResource ),
+    RSResourceSend( $RS, ~requested ), SendRes( ~requested ),
+    RunningResponse( $RS, $C, <'C', 'RS', ~requested> )
+    ]->
+     [
+     Out_A( $RS, $C,
+            aenc(<$RS, $C, aenc(~requested, C_PK), 
+                  sign(aenc(~requested, C_PK), SK_RS)>,
+                 C_PK)
+     )
+     ]
+    variants (modulo AC)
+    1. ~token
+             = ~token.19
+       C_PK  = C_PK.20
+       PK_AS = PK_AS.21
+       VerificationRS
+             = VerificationRS.24
+       z     = verify(VerificationRS.24, <~token.19, C_PK.20>, PK_AS.21)
+    
+    2. ~token
+             = ~token.25
+       C_PK  = C_PK.26
+       PK_AS = pk(x.43)
+       VerificationRS
+             = sign(<~token.25, C_PK.26>, x.43)
+       z     = true
+  */
+
+rule (modulo E) ClientReceive:
+   [
+   In_A( $RS, $C,
+         aenc(<$RS, $C, aenc(requested, C_PK), sign(encryptedMessae, SK_RS)>,
+              C_PK)
+   ),
+   !RSPK( $RS, PK_RS )
+   ]
+  --[
+  PResourceSend( $C, requested ), SecretResource( requested ),
+  CommitResponse( $C, $RS, <'C', 'RS', requested> ), Honest( $C ),
+  Honest( $RS )
+  ]->
+   [ ]
+
+  /* has exactly the trivial AC variant */
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+restriction single_PoP_Key:
+  "∀ #i #j. ((PoPSetup( ) @ #i) ∧ (PoPSetup( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction single_token_per_request:
+  "∀ AS token #i #j.
+    ((CreateToken( AS, token ) @ #i) ∧ (CreateToken( AS, token ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+lemma executable_protocol:
+  exists-trace
+  "∃ C AS encReq tokenResp resourceEnc RS resource #k #l #m #n #f #q #y #u.
+    (((((((ClientRequest( C, encReq ) @ #k) ∧
+          (ReceiveClient( AS, encReq ) @ #l)) ∧
+         (ReturnToken( AS, tokenResp ) @ #m)) ∧
+        (HaveToken( C, tokenResp ) @ #n)) ∧
+       (ResourceRequest( C, resourceEnc ) @ #f)) ∧
+      (RSRec( RS, resourceEnc ) @ #q)) ∧
+     (RSResourceSend( RS, resource ) @ #y)) ∧
+    (PResourceSend( C, resource ) @ #u)"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ C AS encReq tokenResp resourceEnc RS resource #k #l #m #n #f #q #y #u.
+  (ClientRequest( C, encReq ) @ #k) ∧
+  (ReceiveClient( AS, encReq ) @ #l) ∧
+  (ReturnToken( AS, tokenResp ) @ #m) ∧
+  (HaveToken( C, tokenResp ) @ #n) ∧
+  (ResourceRequest( C, resourceEnc ) @ #f) ∧
+  (RSRec( RS, resourceEnc ) @ #q) ∧
+  (RSResourceSend( RS, resource ) @ #y) ∧
+  (PResourceSend( C, resource ) @ #u)"
+*/
+simplify
+solve( !CPK( $C, C_PK ) ▶₃ #k )
+  case InitialiseC
+  solve( !ASSK( $AS.2, SK_AS.1 ) ▶₂ #l )
+    case InitialiseAS
+    solve( !ASPK( $AS.2, PK_AS ) ▶₃ #l )
+      case InitialiseAS
+      solve( !ASSK( $AS.2, SK_AS.1 ) ▶₂ #m )
+        case InitialiseAS
+        solve( !ASPK( $AS.2, PK_AS ) ▶₃ #m )
+          case InitialiseAS
+          solve( In_SCA( $AS.3, $C,
+                         <<sign(<~token.2, C_PK.1>, ~AS_SK.2), ~token.2, C_PK.1>, RS.3>
+                 ) ▶₀ #n )
+            case ChanIn_Secure_PA
+            solve( !CSK( $C, SK_C.1 ) ▶₂ #n )
+              case InitialiseC
+              solve( In_SCA( $AS, $C, <<sign(<~token, C_PK>, SK_AS), ~token, C_PK>, RS>
+                     ) ▶₀ #f )
+                case ChanIn_Secure_PA
+                solve( !CSK( $C, SK_C ) ▶₂ #f )
+                  case InitialiseC
+                  solve( In_SRA( $AS.3, $RS.3, <~token.3, C_PK.2, pk(x), $C.2> ) ▶₁ #q )
+                    case ChanIn_Secure
+                    solve( !RSSK( $RS.3, SK_RS ) ▶₃ #q )
+                      case InitialiseRS
+                      solve( In_SRA( $AS.4, $RS.3, <~token.4, C_PK.4, pk(x), $C.3> ) ▶₁ #y )
+                        case ChanIn_Secure
+                        solve( !RSSK( $RS.3, SK_RS.1 ) ▶₃ #y )
+                          case InitialiseRS
+                          solve( In_A( $RS.4, $C,
+                                       aenc(<$RS.4, $C, aenc(~requested.1, C_PK.3), 
+                                             sign(encryptedMessae, SK_RS)>,
+                                            C_PK.3)
+                                 ) ▶₀ #u )
+                            case ChanIn_Authenticated
+                            solve( !RSPK( $RS.3, PK_RS ) ▶₁ #u )
+                              case InitialiseRS
+                              solve( !KU( sign(<~token.3, C_PK.2>, ~AS_SK.6) ) @ #vk.2 )
+                                case RecTokenSnd
+                                solve( !KU( sign(<~token.4, C_PK.3>, ~AS_SK.7) ) @ #vk.5 )
+                                  case RecTokenSnd
+                                  solve( !KU( aenc(~requestedResource, SK_C) ) @ #vk.3 )
+                                    case RecTokenSnd
+                                    solve( !KU( aenc(~requestedResource.3, SK_C) ) @ #vk.5 )
+                                      case ChanOut_Authenticated
+                                      solve( !KU( sign(<~token.5, pk(x)>, ~AS_SK.8) ) @ #vk.9 )
+                                        case RecTokenSnd
+                                        solve( !KU( aenc(~requestedResource.5, SK_C) ) @ #vk.9 )
+                                          case RecTokenSnd
+                                          solve( In_SCA( $C.1, $AS.2, <~scope, ~audience, ~grant, pk(~C_SK.1)>
+                                                 ) ▶₀ #l )
+                                            case ChanIn_Secure_PA
+                                            solve( In_SCA( $C, $AS.1, <scope.1, audience.1, grant.1, C_PK.1>
+                                                   ) ▶₀ #m )
+                                              case ChanIn_Secure_PA
+                                              solve( In_SCA( $C, $AS, <scope.2, audience.2, grant.2, C_PK>
+                                                     ) ▶₀ #vr.10 )
+                                                case ChanIn_Secure_PA
+                                                solve( In_SCA( $C.1, $AS.2,
+                                                               <scope.3, audience.3, grant.3, C_PK>
+                                                       ) ▶₀ #vr.16 )
+                                                  case ChanIn_Secure_PA
+                                                  solve( In_SCA( $C, $AS.3,
+                                                                 <scope.4, audience.4, grant.4, C_PK>
+                                                         ) ▶₀ #vr.21 )
+                                                    case ChanIn_Secure_PA
+                                                    solve( In_SCA( $B, $AS.4,
+                                                                   <scope.5, audience.5, grant.5, pk(x)>
+                                                           ) ▶₀ #vr.49 )
+                                                      case ChanIn_Secure_PA
+                                                      solve( !KU( ~C_SK.8 ) @ #vk.10 )
+                                                        case Reveal_SecretKeysC
+                                                        solve( In_SCA( $C.2, $AS.5,
+                                                                       <scope.6, audience.6, grant.6, C_PK>
+                                                               ) ▶₀ #vr.61 )
+                                                          case ChanIn_Secure_PA
+                                                          SOLVED // trace found
+                                                        qed
+                                                      qed
+                                                    qed
+                                                  qed
+                                                qed
+                                              qed
+                                            qed
+                                          qed
+                                        qed
+                                      qed
+                                    qed
+                                  qed
+                                qed
+                              qed
+                            qed
+                          qed
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma token_binded:
+  all-traces
+  "∀ C RS resource #i.
+    (CommitResponse( C, RS, resource ) @ #i) ⇒
+    ((∃ secretk #j. HasSecret( C, secretk ) @ #j) ∨
+     (∃ E #r. RevealC( E ) @ #r))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ C RS resource #i.
+  (CommitResponse( C, RS, resource ) @ #i)
+ ∧
+  (∀ secretk #j. (HasSecret( C, secretk ) @ #j) ⇒ ⊥) ∧
+  (∀ E #r. (RevealC( E ) @ #r) ⇒ ⊥)"
+*/
+simplify
+solve( In_A( $RS, $C,
+             aenc(<$RS, $C, aenc(requested, C_PK), sign(encryptedMessae, SK_RS)>,
+                  C_PK)
+       ) ▶₀ #i )
+  case ChanIn_Authenticated
+  solve( !RSPK( $RS, PK_RS ) ▶₁ #i )
+    case InitialiseRS
+    solve( !KU( sign(<~token, C_PK>, ~AS_SK) ) @ #vk.3 )
+      case RecTokenSnd
+      by contradiction /* from formulas */
+    next
+      case c_sign
+      solve( !KU( ~AS_SK ) @ #vk.5 )
+        case Reveal_SecretKeysAS
+        by solve( !KU( ~token ) @ #vk.6 )
+      qed
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end

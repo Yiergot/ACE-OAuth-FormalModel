@@ -1,0 +1,324 @@
+theory AceAuthSpec_Profile
+begin
+
+/*
+* Protocol: Ace-Oauth : https://tools.ietf.org/pdf/draft-ietf-ace-oauth-authz-18.pdf
+* Model Author: Luca Arnaboldi 
+*
+* Date : 28th December 2019 
+* Last Update: 10th March 2019 
+* status: ongoing - stable 
+*
+*  
+* Readjustable model just insert different components and scenarios to match your profile
+* Profile in a smart factory
+* 
+* Agents:
+*
+* C: Client
+* AS: Authorization Server
+* RS: Resource Server
+* 
+*
+*/
+builtins: asymmetric-encryption,signing,hashing 
+
+
+rule InitialiseC:
+let
+	C_PK = pk(~C_SK)
+in
+[Fr(~C_SK)]
+--[CSetup()]->
+[!CSK($C,~C_SK),
+ !CPK($C,C_PK),
+ Out(C_PK)]
+
+rule InitialisePoPKey:
+let
+	PoP_PK = pk(~PoP_SK)
+in
+[ Fr(~PoP_SK) ]
+--[PoPSetup()]->
+[!PoP_SK($AS,~PoP_SK),
+ !PoP_PK($AS,PoP_PK)
+ ]
+
+rule InitialiseAS:
+let AS_PK = pk(~AS_SK)
+in
+[ Fr(~AS_SK) ]
+--[ASSetup()]->
+[!ASSK($AS,~AS_SK),
+ !ASPK($AS,AS_PK),
+ Out(AS_PK)]
+
+rule InitialiseRS:
+let RS_PK = pk(~RS_SK)
+in
+[ Fr(~RS_SK) ]
+--[RSSetup()]->
+[!RSSK($RS,~RS_SK),
+ !RSPK($RS,RS_PK),
+ Out(RS_PK)]
+
+rule Reveal_SecretKeysAS:
+	[!ASSK( $AS, SK_AS )]
+  --[RevealAS($AS)]->
+	[Out(SK_AS)]
+
+rule Reveal_SecretKeysC:
+	[!CSK( $C, SK_C )]
+  --[RevealP($C)]->
+	[Out(SK_C)]
+rule Reveal_SecretKeysPoP:
+	[!PoP_SK( $AS, SK_Pop )]
+  --[RevealPoP($AS)]->
+	[Out(SK_Pop)]
+
+	rule Reveal_SecretKeysRS:
+	[!RSSK( $RS, SK_RS )]
+  --[RevealRS($RS)]->
+	[Out(SK_RS)]
+
+
+// ACE-OAuth Draft 21 Pg 41 - All channels between C - AS and RS to AS must be secure and replay protected
+//Secure Channels + replay resistance for C-AS
+rule ChanOut_Secure_PA:
+        [ Out_SCA($A,$B,x) ]
+      --[ ChanOut_SCA($A,$B,x) ]->
+        [ SecCA($A,$B,x) ]
+rule ChanIn_Secure_PA:
+        [ SecCA($A,$B,x) ]
+      --[ ChanIn_SCA($A,$B,x) ]->
+        [ In_SCA($A,$B,x) ]
+
+//Secure Channels + replay resistance for C-RS (After setup)
+rule ChanOut_Secure_PR:
+        [ Out_SCR($A,$B,x) ]
+      --[ ChanOut_SCR($A,$B,x) ]->
+        [ SecCR($A,$B,x) ]
+rule ChanIn_Secure_PR:
+        [ SecCR($A,$B,x) ]
+      --[ ChanIn_SCR($A,$B,x) ]->
+        [ In_SCR($A,$B,x) ]
+
+
+//secure channels + replay resistance for AS-RS
+rule ChanOut_Secure:
+        [ Out_SRA($A,$B,x) ]
+      --[ ChanOut_SRA($A,$B,x) ]->
+        [ SecSRA($A,$B,x) ]
+rule ChanIn_Secure:
+        [ SecSRA($A,$B,x) ]
+      --[ ChanIn_SRA($A,$B,x) ]->
+        [ In_SRA($A,$B,x) ]
+//Authenticated Channels
+rule ChanOut_Authenticated:
+    [ Out_A($A,$B,x) ]
+    --[ ChanOut_A($A,$B,x) ]->
+    [ !Auth($A,x), Out(<$A,$B,x>) ]
+
+rule ChanIn_Authenticated:
+    [ !Auth($A,x), In($B) ]
+    --[ ChanIn_A($A,$B,x) ]->
+    [ In_A($A,$B,x) ]
+
+
+// As we are evaluating the effectiveness of the requirements and spec set out we do not model a specific
+// protocol such as DTLS but model it as Secure+replay protected channels variations can be tested here
+rule ClientRecReqSnd:
+let
+	//Encryption and authentication means must be added here if not using S+P channels
+	requestOut =<~scope,~audience,~grant>
+in
+[
+	Fr(~scope),  Fr(~grant), Fr(~audience)
+	//Set up and save it's keys and get the public key from the AS is asymmetric crypto is used
+	,!CSK($C,SK_C),!CPK($C,PK_C) 
+	
+]
+--[
+	ClientRequest($C,requestOut)
+	,Running($C,$AS,<'AS','C',requestOut>)
+]->
+[
+	//save variables
+	St1_C($C,SK_C,PK_C,~scope,~audience,~grant)
+	//Secure replay protected channel
+	,Out_SCA($C,$AS,requestOut)	
+]
+
+rule ASRecReqSnd:
+let
+	CReq = <~scope,~audience,~grant>
+    PoP_Token = <sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>
+
+    //Add encryption and authentication here for variations
+	tokenResponse = <PoP_Token,PoP_SK,PK_AS,$RS>	
+in
+[ 
+	In_SCA($C,$AS,CReq), 
+	Fr(~token),
+	// Create the proof of possession key setup 
+	//   - Asymmmentric here but can be symmetric
+	!PoP_PK($AS,PoP_PK),!PoP_SK($AS,PoP_SK)
+	//Save my pk/sk key combo
+	,!ASSK($AS,SK_AS), !ASPK($AS,PK_AS)
+	//Get the public key of the client and save it
+	,!CPK($C,PK_C)
+]
+--[
+	ReceiveClient($AS,CReq)
+	,CreateToken($AS,~token)
+	,Honest($AS),Honest($C)
+	,ReturnToken($AS,PoP_Token)
+
+	,SecretR(CReq)
+	,CommitRequest($AS,$C,<'AS','C',CReq>)
+
+	,RunningToken($AS,$C,<'C','AS',~token>)
+]->
+[
+	//Save variables
+	St1_AS($AS,PK_C,SK_AS,PK_AS,~token,PoP_Token,PoP_SK,PoP_PK),
+
+	//Send out the response
+	Out_SCA($AS,$C,tokenResponse),
+
+	//As the request is meant to state the RS needed send him the information he needs (this is setup by default in ACE-OAUTH)
+	Out_SRA($AS,$RS,<~token,PoP_PK,PK_AS,$C>)
+]
+
+
+            
+//Here the resource request is sent to RS, on insecure channel
+/* Communication is on insecure channel so the attacker will know:
+	~ PoP_Token - But cannot reuse it as he doesnt have PoP_PK
+	~ what request is being made - but not identity of who requests (handled in token on protocol)
+*/
+rule RecTokenSnd:
+let 
+	
+	//Interpret variables to quicken analysis
+	PoP_Token = <sign(<~token,PoP_PK>,SK_AS),<~token,PoP_PK>>
+	//The PoP_SK is secret and only for the client. 
+
+	VerificationRS = <sign(<~token,PoP_PK>,SK_AS)>
+	//This allows him to verify communication from RS later when RS gets the content of token
+	tokenAS = <PoP_Token,PoP_SK,RS>
+
+	
+	
+
+	//Request plus token insecurely sent
+	//requestResource = <$C,RS,'C','RS',~requestedResource,VerificationRS>
+	requestResource = <aenc(~requestedResource,PoP_SK),VerificationRS>
+in
+[ 
+	In_SCA($AS,$C,tokenAS) 
+	,
+	//Random resource request
+	Fr(~requestedResource)
+]	
+--[
+	
+
+	Honest($C),Honest($AS)
+	,CommitToken($C,$AS,<'C','AS',~token>)
+	,SecretT(PoP_Token)
+        ,HasSecret($C,PoP_SK)	
+	,HaveToken($C,PoP_Token)
+	,Honest($AS),Honest($C),
+	ResourceRequest($C,~requestedResource)
+
+	]->
+	[
+		
+		Out(requestResource)
+	]
+
+
+
+
+	rule RSReq:
+	let
+
+
+
+		reqRes = <aenc(~requestedResource,PoP_SK),VerificationRS>
+
+		encryptedMessage = aenc(~requested,PoP_PK)
+		signature = sign(encryptedMessage,SK_RS)
+		response = aenc(<$RS,$C,encryptedMessage,signature>,PoP_PK)
+	in
+	[
+		In(reqRes)
+		,In_SRA($AS,$RS,<~token,PoP_PK,PK_AS,$C>)
+		,Fr(~requested)
+		,!RSSK($RS,SK_RS)
+	]
+	--[
+
+		Eq(verify(VerificationRS,<~token,PoP_PK>,PK_AS),true),
+		RSRec($RS,~requestedResource)
+		,RSResourceSend($RS,~requested)
+		,SendRes(~requested)
+		,RunningResponse($RS,$C,<'C','RS',~requested>)
+	]->
+	[
+
+		Out_A($RS,$C,response)
+	]
+
+rule ClientReceive:
+	let
+		encryptedMessa = aenc(~requested,PoP_PK)
+		signatur = sign(encryptedMessae,SK_RS)
+		respons = aenc(<$RS,$C,encryptedMessa,signatur>,PoP_PK)		
+	in
+	[
+		 In_A($RS,$C,respons)
+		,!RSPK($RS,PK_RS)
+	]
+	--[
+		 PResourceSend($C,~requested)
+		,SecretResource(~requested)
+		,CommitResponse($C,$RS,<'C','RS',~requested>)
+		,Honest($C),Honest($RS)
+		
+	]->
+	[
+	]
+//Equational theory for Eq
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+// Assume that there is a single Proof of Possession key for a token
+restriction single_PoP_Key:
+"All #i #j. PoPSetup(  ) @ #i & PoPSetup(  )  @ #j ==> #i = #j"
+restriction single_token_per_request:
+"All AS token #i #j. CreateToken(AS,token) @ #i & CreateToken(AS,token)  @ #j ==> #i = #j"
+//Ensuring the correct portocol flow
+lemma executable_protocol:
+	exists-trace
+	"
+		 Ex  C  AS encReq tokenResp  
+		 resourceEnc RS resource
+		#k #l #m #n 
+		#f #q #y #u .  
+		ClientRequest(C,encReq) @ #k & ReceiveClient(AS,encReq)@ #l &
+		ReturnToken(AS,tokenResp) @ #m & HaveToken(C,tokenResp) @ #n &
+		ResourceRequest(C,resourceEnc) @ #f & RSRec(RS,resourceEnc) @ #q  &
+	    RSResourceSend(RS,resource) @ #y & PResourceSend(C,resource) @ #u 
+		"
+
+               
+lemma token_bound:
+"
+	All C RS resource #i.
+	  CommitResponse(C,RS,resource) @i
+	  ==> (Ex secretk #j. HasSecret(C,secretk) @j) | (Ex E #r . RevealPoP(E) @ r)
+"
+
+end
